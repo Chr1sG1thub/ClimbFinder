@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climb Finder</title>
+    <script src="https://cdn.jsdelivr.net/gh/Luuka/GPXParser.js@master/GPXParser.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        #fileInput { margin: 20px 0; }
+        #results { margin-top: 20px; padding: 15px; background: #f0f8ff; border-radius: 5px; }
+        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; white-space: pre-wrap; }
+        button { padding: 10px 20px; background: #007cba; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #005a87; }
+    </style>
+</head>
+<body>
+    <h1>Climb Finder</h1>
+    <p>Select a GPX file from your filesystem to parse trackpoints and calculate route length.</p>
+    <input type="file" id="fileInput" accept=".gpx" />
+    <button onclick="analyzeGPX()">Analyze Route</button>
+    
+    <div id="results" style="display: none;">
+        <h2>Results</h2>
+        <p><strong>Total Length:</strong> <span id="length"></span> km</p>
+        <p><strong>Trackpoints:</strong> <span id="pointCount"></span></p>
+        <h3>Trackpoints Array (first 10):</h3>
+        <pre id="trackpoints"></pre>
+    </div>
+
+    <script>
+        // Haversine formula to calculate distance between two lat/lon points (in km)
+        function haversineDistance(point1, point2) {
+            const R = 6371; // Earth's radius in km
+            const dLat = (point2.lat - point1.lat) * Math.PI / 180;
+            const dLon = (point2.lon - point1.lon) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        } [web:20][web:29]
+
+        function analyzeGPX() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a GPX file.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const gpxText = e.target.result;
+                const gpx = new gpxParser();
+                gpx.parse(gpxText);
+
+                if (gpx.tracks.length === 0) {
+                    alert('No tracks found in GPX file.');
+                    return;
+                }
+
+                const track = gpx.tracks[0]; // Use first track
+                const trackpoints = track.points.map(p => ({
+                    lat: p.lat,
+                    lon: p.lon,
+                    ele: p.ele || null
+                })); [web:16][memory:9]
+
+                // Calculate total length
+                let totalLength = 0;
+                for (let i = 1; i < trackpoints.length; i++) {
+                    totalLength += haversineDistance(trackpoints[i-1], trackpoints[i]);
+                }
+
+                // Display results
+                document.getElementById('length').textContent = totalLength.toFixed(2);
+                document.getElementById('pointCount').textContent = trackpoints.length;
+                document.getElementById('trackpoints').textContent = JSON.stringify(
+                    trackpoints.slice(0, 10), null, 2
+                );
+                document.getElementById('results').style.display = 'block';
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
