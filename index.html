@@ -39,7 +39,7 @@
                       Math.sin(dLon / 2) * Math.sin(dLon / 2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             return R * c;
-        } [web:20][web:29]
+        }
 
         function analyzeGPX() {
             const fileInput = document.getElementById('fileInput');
@@ -65,7 +65,7 @@
                     lat: p.lat,
                     lon: p.lon,
                     ele: p.ele || null
-                })); [web:16][memory:9]
+                }));
 
                 // Calculate total length
                 let totalLength = 0;
