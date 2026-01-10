@@ -3,173 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Climb Finder</title>
+    <title>Pyrenees Climb Finder</title>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.3.1/turf.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        #fileInput { margin: 20px 0; }
-        #results { margin-top: 20px; padding: 15px; background: #f0f8ff; border-radius: 5px; }
-        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; white-space: pre-wrap; }
-        button { padding: 10px 20px; background: #007cba; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #005a87; }
-        .error { color: red; }
+        body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; line-height: 1.5; }
+        h1 { color: #2c3e50; }
+        #fileInput { margin: 20px 0; padding: 10px; border: 2px dashed #3498db; border-radius: 8px; background: #f8f9fa; }
+        #fileInput.dragover { background: #e3f2fd; border-color: #2196f3; }
+        button { padding: 12px 24px; background: #27ae60; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #219a52; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+        #results { margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 8px; display: none; }
+        #climbs { margin-top: 25px; }
+        .climb-stats { background: #d1ecf1; padding: 15px; border-radius: 6px; margin: 15px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: right; }
+        th { background: #495057; color: white; text-align: left; font-weight: 600; }
+        td:first-child, th:first-child { text-align: left; font-weight: 500; }
+        tr:nth-child(even) { background: #f8f9fa; }
+        tr.climb-highlight { background: #c3e6cb !important; }
+        pre { background: #2d3748; color: #a0aec0; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 13px; max-height: 200px; }
+        .error { color: #e53e3e; background: #fed7d7; padding: 15px; border-radius: 6px; margin: 10px 0; display: none; }
+        .loading { text-align: center; color: #666; }
     </style>
 </head>
 <body>
-    <h1>Climb Finder</h1>
-    <p>Select a GPX file to parse trackpoints (lat/lon/ele) and calculate route length. No external libraries needed.</p>
-    <input type="file" id="fileInput" accept=".gpx" />
-    <button onclick="analyzeGPX()">Analyze Route</button>
+    <h1>🏔️ Pyrenees Climb Finder</h1>
+    <p>Upload Strava GPX → Auto-detect climbs (Fiets rating ≥100m @10%). Perfect for Col du Puymorens, Tourmalet.</p>
     
-    <div id="results" style="display: none;">
-        <h2>Results</h2>
-        <p><strong>Total Length:</strong> <span id="length"></span> km</p>
-        <p><strong>Trackpoints:</strong> <span id="pointCount"></span></p>
-        <h3>Trackpoints Array (first 10):</h3>
-        <pre id="trackpoints"></pre>
+    <div style="text-align: center; margin: 30px 0;">
+        <input type="file" id="fileInput" accept=".gpx" />
+        <br><br>
+        <button id="analyzeBtn" onclick="analyzeGPX()">🔍 Find Climbs</button>
     </div>
-    <div id="error" class="error" style="display: none;"></div>
-
-<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.3.1/turf.min.js"></script>
-    <script>
-
-/**
- * Full JS port of Perl findClimbs: Recursively finds climb/descent segments in GPS elevation profile.
- * Uses Turf.js for distances, Fiets-like rating. Assumes points: [{lat, lon, ele}, ...]
- * @returns Array of [[startIdx, endIdx], ...] pairs of ORIGINAL point indices.
- */
-function findClimbs({
-  points,                  // [{lat, lon, ele}, ...]
-  indices,                 // Optional pre-computed indices
-  simplifyPoints = true,   // Use simplifyProfile?
-  shiftCircuit = true,     // Shift loops to ele min?
-  courseDistance,          // Total route km (used in simplify/normalize)
-  gradientPower = 2,       // Exponent for steepness bias
-  threshold = 100,         // Min Fiets rating (m @10%)
-  isLoop = false,          // Circular route?
-  sign = 1                 // 1=climbs, -1=descents, 0=both (abs)
-}) {
-  if (!points || points.length < 2) return [];
-
-  // Compute indices if not provided
-  indices = indices || (simplifyPoints ? simplifyProfile(points, gradientPower, courseDistance, isLoop) : points.map((_, i) => i));
-
-  // Shift circuit to ele min (no gradient flips across bottom)
-  if (shiftCircuit && isLoop && indices.length > 1) {
-    let zMin = points[indices[0]].ele;
-    let izMin = 0;
-    for (let i = 1; i < indices.length; i++) {
-      if (points[indices[i]].ele < zMin) {
-        zMin = points[indices[i]].ele;
-        izMin = i;
-      }
-    }
-    if (izMin > 0) {
-      indices = indices.slice(izMin).concat(indices.slice(0, izMin));
-    }
-  }
-
-  // Brute-force find max Fiets rating segment
-  let rating = threshold;
-  let range = null;
-  for (let j = 1; j < indices.length; j++) {
-    for (let i = 0; i < j; i++) {
-      const segPoints = points.slice(indices[i], indices[j] + 1);
-      let r = climbRating({ points: segPoints, gradientPower });
-      if (sign === 0) r = Math.abs(r);
-      else r *= sign;
-      if (r > rating) {
-        rating = r;
-        range = [i, j];
-      }
-    }
-  }
-
-  const climbs = [];
-  if (range && rating >= threshold) {
-    // Recurse prefix
-    if (range[0] > 0) {
-      climbs.push(...findClimbs({
-        points,
-        indices: indices.slice(0, range[0]),
-        simplifyPoints: false,
-        shiftCircuit: false,
-        courseDistance,
-        gradientPower,
-        threshold,
-        isLoop,
-        sign
-      }));
-    }
-
-    // Add this climb (original indices)
-    climbs.push([indices[range[0]], indices[range[1]]]);
-
-    // Recurse suffix
-    if (range[1] < indices.length - 1) {
-      climbs.push(...findClimbs({
-        points,
-        indices: indices.slice(range[1] + 1),
-        simplifyPoints: false,
-        shiftCircuit: false,
-        courseDistance,
-        gradientPower,
-        threshold,
-        isLoop,
-        sign
-      }));
-    }
-  }
-
-  return climbs;
-}
-
-/**
- * Fiets climb rating: Normalized "vertical meters @10%". Penalizes shallow gradients.
- * Approx: (gain^gp / dist) * (10% norm factor)
- */
-function climbRating({ points, gradientPower = 2 }) {
-  if (points.length < 2) return 0;
-  const gain = points[points.length - 1].ele - points[0].ele;
-  if (gain <= 0) return 0;  // Climbs only (modify for descents)
-
-
-  const coords = points.map(p => [p.lon, p.lat]);
-  const distKm = turf.lineDistance({ type: 'LineString', coordinates: coords }, { units: 'kilometers' });
-  const distM = distKm * 1000;
-  const pctGrad = (gain / distM) * 100;
-
-  // Fiets-like: gain * (pctGrad / 10)^(1-gp) approx, but gp-power on gain for steep bias [web:16]
-  return Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(pctGrad / 10, 1 - gradientPower);
-}
-
-/**
- * simplifyProfile stub: Douglas-Peucker via Turf (tolerance based on courseDistance/gradientPower).
- * Returns key indices preserving profile shape.
- */
-function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
-  if (!points || points.length < 3) return points.map((_, i) => i);
-  const coords = points.map(p => [p.lon, p.lat]);
-  const tolerance = (courseDistance || 50) / 1000 * Math.pow(gradientPower, 0.5) * 0.01;  // Adaptive ~1% route
-  const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: false });
-  const simpIndices = [];  // Map back to original indices (approx via closest coord match)
-  simplified.coordinates.forEach(sc => {
-    let minDist = Infinity, bestIdx = 0;
-    coords.forEach((oc, oi) => {
-      const d = turf.distance(sc, oc, { units: 'meters' });
-      if (d < minDist) { minDist = d; bestIdx = oi; }
-    });
-    if (minDist < 10) simpIndices.push(bestIdx);  // Threshold match
-  });
-  return isLoop ? simpIndices : uniq(simpIndices);  // Dedup
-}
-
-// Helpers
-function uniq(arr) {
-  return arr.filter((v, i, a) => a.indexOf(v) === i);
-}
-
+    
+    <div id="loading" class="loading" style="display: none;">Analyzing route...</div>
+    <div id="error" class="error"></div>
+    
+    <div id="results">
+        <h2>📊 Route Summary</h2>
+        <div class="climb-stats">
+            <strong>Total Length:</strong> <span id="length">-</span> km | 
+            <strong>Points:</strong> <span id="pointCount">-</span> | 
+            <strong>Elevation Points:</strong> <span id="eleCount">-</span>
+        </div>
         
-        // Haversine distance between two points (km)
+        <details>
+            <summary>First 5 trackpoints (click to expand)</summary>
+            <pre id="trackpoints"></pre>
+        </details>
+
+        <div id="climbs">
+            <h2>⛰️ Detected Climbs</h2>
+            <div id="climbCount" style="font-size: 18px; margin-bottom: 15px;"></div>
+            <table id="climbsTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Start (m)</th>
+                        <th>End (m)</th>
+                        <th>Gain</th>
+                        <th>Dist</th>
+                        <th>Gradient</th>
+                        <th>Fiets Rating</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Haversine distance (km)
         function haversineDistance(p1, p2) {
             const R = 6371;
             const dLat = (p2.lat - p1.lat) * Math.PI / 180;
@@ -178,13 +83,11 @@ function uniq(arr) {
             return R * 2 * Math.asin(Math.sqrt(a));
         }
 
-        // Parse GPX text to trackpoints array using DOMParser
+        // GPX Parser
         function parseGPX(gpxText) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(gpxText, 'text/xml');
-            const errors = xmlDoc.getElementsByTagName('parsererror');
-            if (errors.length > 0) throw new Error('Invalid GPX XML');
-
+            if (xmlDoc.getElementsByTagName('parsererror').length > 0) throw new Error('Invalid GPX XML');
             const trkpts = xmlDoc.getElementsByTagName('trkpt');
             const trackpoints = [];
             for (let i = 0; i < trkpts.length; i++) {
@@ -193,62 +96,163 @@ function uniq(arr) {
                 const lon = parseFloat(pt.getAttribute('lon'));
                 const eleNode = pt.getElementsByTagName('ele')[0];
                 const ele = eleNode ? parseFloat(eleNode.textContent) : null;
-                if (!isNaN(lat) && !isNaN(lon)) {
-                    trackpoints.push({ lat, lon, ele });
-                }
+                if (!isNaN(lat) && !isNaN(lon)) trackpoints.push({ lat, lon, ele });
             }
             if (trackpoints.length === 0) throw new Error('No valid trackpoints found');
             return trackpoints;
         }
 
+        // Fiets climb rating (FIXED for Turf v7)
+        function climbRating({ points, gradientPower = 2 }) {
+            if (points.length < 2) return 0;
+            const gain = points[points.length - 1].ele - points[0].ele;
+            if (gain <= 0) return 0;
+            const coords = points.map(p => [p.lon, p.lat]);
+            const distKm = turf.length({type: 'LineString', coordinates: coords}, {units: 'kilometers'}); // FIXED [web:52]
+            const distM = distKm * 1000;
+            const pctGrad = (gain / distM) * 100;
+            return Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(pctGrad / 10, 1 - gradientPower);
+        }
+
+        // Simplify profile (FIXED for Turf v7)
+        function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
+            if (!points || points.length < 3) return points.map((_, i) => i);
+            const coords = points.map(p => [p.lon, p.lat]);
+            const tolerance = (courseDistance || 50) / 1000 * Math.pow(gradientPower, 0.5) * 0.01;
+            const simplified = turf.simplify({type: 'LineString', coordinates: coords}, {tolerance, highQuality: false});
+            const simpIndices = [];
+            simplified.geometry.coordinates.forEach(sc => {  // FIXED geometry access
+                let minDist = Infinity, bestIdx = 0;
+                coords.forEach((oc, oi) => {
+                    const d = turf.distance(sc, oc, {units: 'meters'});
+                    if (d < minDist) { minDist = d; bestIdx = oi; }
+                });
+                if (minDist < 10) simpIndices.push(bestIdx);
+            });
+            return isLoop ? simpIndices : uniq(simpIndices);
+        }
+
+        // Main recursive climb finder
+        function findClimbs({points, indices, simplifyPoints = true, shiftCircuit = true, courseDistance, gradientPower = 2, threshold = 100, isLoop = false, sign = 1}) {
+            if (!points || points.length < 2) return [];
+            indices = indices || (simplifyPoints ? simplifyProfile(points, gradientPower, courseDistance, isLoop) : points.map((_, i) => i));
+            if (shiftCircuit && isLoop && indices.length > 1) {
+                let zMin = points[indices[0]].ele, izMin = 0;
+                for (let i = 1; i < indices.length; i++) if (points[indices[i]].ele < zMin) { zMin = points[indices[i]].ele; izMin = i; }
+                if (izMin > 0) indices = indices.slice(izMin).concat(indices.slice(0, izMin));
+            }
+            let rating = threshold, range = null;
+            for (let j = 1; j < indices.length; j++) for (let i = 0; i < j; i++) {
+                const segPoints = points.slice(indices[i], indices[j] + 1);
+                let r = climbRating({points: segPoints, gradientPower});
+                if (sign === 0) r = Math.abs(r); else r *= sign;
+                if (r > rating) { rating = r; range = [i, j]; }
+            }
+            const climbs = [];
+            if (range && rating >= threshold) {
+                if (range[0] > 0) climbs.push(...findClimbs({points, indices: indices.slice(0, range[0]), simplifyPoints: false, shiftCircuit: false, courseDistance, gradientPower, threshold, isLoop, sign}));
+                climbs.push([indices[range[0]], indices[range[1]]]);
+                if (range[1] < indices.length - 1) climbs.push(...findClimbs({points, indices: indices.slice(range[1] + 1), simplifyPoints: false, shiftCircuit: false, courseDistance, gradientPower, threshold, isLoop, sign}));
+            }
+            return climbs;
+        }
+
+        function uniq(arr) { return arr.filter((v, i, a) => a.indexOf(v) === i); }
+
+        // Main analyzer
         function analyzeGPX() {
             const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
             const resultsDiv = document.getElementById('results');
             const errorDiv = document.getElementById('error');
+            const loadingDiv = document.getElementById('loading');
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const tbody = document.querySelector('#climbsTable tbody');
 
             resultsDiv.style.display = 'none';
             errorDiv.style.display = 'none';
+            tbody.innerHTML = '';
+            loadingDiv.style.display = 'block';
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = 'Processing...';
 
-            if (!file) {
-                showError('Please select a GPX file.');
+            if (!file || !window.turf) {
+                showError(window.turf ? 'No GPX file selected' : 'Turf.js failed to load');
+                resetUI(analyzeBtn, loadingDiv);
                 return;
             }
 
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    const trackpoints = parseGPX(e.target.result);
+                    let trackpoints = parseGPX(e.target.result);
+                    const elePoints = trackpoints.filter(p => p.ele !== null && !isNaN(p.ele));
+                    if (elePoints.length < 10) throw new Error(`Need elevation data (found ${elePoints.length} pts)`);
 
-
-
-                    // Calculate total length
                     let totalLength = 0;
-                    for (let i = 1; i < trackpoints.length; i++) {
-                        totalLength += haversineDistance(trackpoints[i-1], trackpoints[i]);
-                    }
+                    for (let i = 1; i < trackpoints.length; i++) totalLength += haversineDistance(trackpoints[i-1], trackpoints[i]);
 
-                     const climbs = findClimbs({ points: trackpoints });
+                    const climbs = findClimbs({ points: elePoints, courseDistance: totalLength });
 
-                    // Display
                     document.getElementById('length').textContent = totalLength.toFixed(2);
                     document.getElementById('pointCount').textContent = trackpoints.length.toLocaleString();
-                    document.getElementById('trackpoints').textContent = JSON.stringify(
-                        trackpoints.slice(0, 10), null, 2
-                    );
+                    document.getElementById('eleCount').textContent = elePoints.length.toLocaleString();
+                    document.getElementById('trackpoints').textContent = JSON.stringify(elePoints.slice(0, 5), null, 2);
+
+                    const climbCountEl = document.getElementById('climbCount');
+                    if (climbs.length === 0) {
+                        climbCountEl.innerHTML = '<strong>🎉 No significant climbs found</strong> (all &lt;100m @10%)';
+                    } else {
+                        climbCountEl.innerHTML = `<strong>🎉 Found <span style="color:#27ae60">${climbs.length}</span> climb(s)</strong>`;
+                        climbs.forEach((climb, idx) => {
+                            const startPt = elePoints[climb[0]];
+                            const endPt = elePoints[climb[1]];
+                            const gain = endPt.ele - startPt.ele;
+                            const segPoints = elePoints.slice(climb[0], climb[1] + 1);
+                            const segDist = segPoints.reduce((sum, p, i) => i > 0 ? sum + haversineDistance(segPoints[i-1], p) : sum, 0);
+                            const gradient = (gain / (segDist * 1000)) * 100;
+                            const rating = climbRating({ points: segPoints });
+
+                            const row = tbody.insertRow();
+                            row.className = 'climb-highlight';
+                            row.innerHTML = `
+                                <td>${idx+1}</td>
+                                <td>${climb[0]}<br>${startPt.ele.toFixed(0)}m</td>
+                                <td>${climb[1]}<br>${endPt.ele.toFixed(0)}m</td>
+                                <td style="color:#27ae60;font-weight:bold">${gain.toFixed(0)}m</td>
+                                <td>${segDist.toFixed(2)}km</td>
+                                <td>${gradient.toFixed(1)}%</td>
+                                <td style="color:#e74c3c;font-size:16px">${rating.toFixed(0)}</td>
+                            `;
+                        });
+                    }
+
                     resultsDiv.style.display = 'block';
+                    console.table(climbs.map((c,i) => ({ Climb: i+1, Start: c[0], End: c[1] })));
                 } catch (err) {
                     showError(err.message);
+                } finally {
+                    resetUI(analyzeBtn, loadingDiv);
                 }
             };
-            reader.onerror = () => showError('Failed to read file');
+            reader.onerror = () => { showError('Failed to read file'); resetUI(analyzeBtn, loadingDiv); };
             reader.readAsText(file);
         }
 
         function showError(msg) {
-            document.getElementById('error').textContent = msg;
+            document.getElementById('error').innerHTML = `❌ ${msg}`;
             document.getElementById('error').style.display = 'block';
         }
-    </script>
-</body>
-</html>
+
+        function resetUI(btn, loading) {
+            btn.disabled = false;
+            btn.textContent = '🔍 Find Climbs';
+            loading.style.display = 'none';
+        }
+
+        // Drag & drop
+        document.getElementById('fileInput').addEventListener('dragover', e => {
+            e.preventDefault();
+            e.currentTarget.classList.add('dragover');
+        });
+        document.getElementById('fileInpu
