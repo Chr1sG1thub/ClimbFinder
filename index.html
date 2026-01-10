@@ -228,16 +228,7 @@ function uniq(arr) {
                         totalLength += haversineDistance(trackpoints[i-1], trackpoints[i]);
                     }
 
-                     const climbs = findClimbs(
-  trackpoints,                  // [{lat, lon, ele}, ...]
-  true,   // Use simplifyProfile?
-  true,     // Shift loops to ele min?
-  totalLength,          // Total route km (used in simplify/normalize)
-  2,       // Exponent for steepness bias
-  100,         // Min Fiets rating (m @10%)
-  false,          // Circular route?
-  1                 // 1=climbs, -1=descents, 0=both (abs)
-);
+                     const climbs = findClimbs({ points: trackpoints });
 
                     // Display
                     document.getElementById('length').textContent = totalLength.toFixed(2);
