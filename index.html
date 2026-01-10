@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Climb Finder</title>
-    <script src="https://cdn.jsdelivr.net/gh/Luuka/GPXParser.js@master/GPXParser.js"></script>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         #fileInput { margin: 20px 0; }
@@ -12,11 +11,12 @@
         pre { background: #f4f4f4; padding: 10px; overflow-x: auto; white-space: pre-wrap; }
         button { padding: 10px 20px; background: #007cba; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #005a87; }
+        .error { color: red; }
     </style>
 </head>
 <body>
     <h1>Climb Finder</h1>
-    <p>Select a GPX file from your filesystem to parse trackpoints and calculate route length.</p>
+    <p>Select a GPX file to parse trackpoints (lat/lon/ele) and calculate route length. No external libraries needed.</p>
     <input type="file" id="fileInput" accept=".gpx" />
     <button onclick="analyzeGPX()">Analyze Route</button>
     
@@ -27,61 +27,84 @@
         <h3>Trackpoints Array (first 10):</h3>
         <pre id="trackpoints"></pre>
     </div>
+    <div id="error" class="error" style="display: none;"></div>
 
     <script>
-        // Haversine formula to calculate distance between two lat/lon points (in km)
-        function haversineDistance(point1, point2) {
-            const R = 6371; // Earth's radius in km
-            const dLat = (point2.lat - point1.lat) * Math.PI / 180;
-            const dLon = (point2.lon - point1.lon) * Math.PI / 180;
-            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                      Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
-                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            return R * c;
+        // Haversine distance between two points (km)
+        function haversineDistance(p1, p2) {
+            const R = 6371;
+            const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+            const dLon = (p2.lon - p1.lon) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(p1.lat * Math.PI/180) * Math.cos(p2.lat * Math.PI/180) * Math.sin(dLon/2)**2;
+            return R * 2 * Math.asin(Math.sqrt(a));
+        }
+
+        // Parse GPX text to trackpoints array using DOMParser
+        function parseGPX(gpxText) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(gpxText, 'text/xml');
+            const errors = xmlDoc.getElementsByTagName('parsererror');
+            if (errors.length > 0) throw new Error('Invalid GPX XML');
+
+            const trkpts = xmlDoc.getElementsByTagName('trkpt');
+            const trackpoints = [];
+            for (let i = 0; i < trkpts.length; i++) {
+                const pt = trkpts[i];
+                const lat = parseFloat(pt.getAttribute('lat'));
+                const lon = parseFloat(pt.getAttribute('lon'));
+                const eleNode = pt.getElementsByTagName('ele')[0];
+                const ele = eleNode ? parseFloat(eleNode.textContent) : null;
+                if (!isNaN(lat) && !isNaN(lon)) {
+                    trackpoints.push({ lat, lon, ele });
+                }
+            }
+            if (trackpoints.length === 0) throw new Error('No valid trackpoints found');
+            return trackpoints;
         }
 
         function analyzeGPX() {
             const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
+            const resultsDiv = document.getElementById('results');
+            const errorDiv = document.getElementById('error');
+
+            resultsDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+
             if (!file) {
-                alert('Please select a GPX file.');
+                showError('Please select a GPX file.');
                 return;
             }
 
             const reader = new FileReader();
             reader.onload = function(e) {
-                const gpxText = e.target.result;
-                const gpx = new gpxParser();
-                gpx.parse(gpxText);
+                try {
+                    const trackpoints = parseGPX(e.target.result);
 
-                if (gpx.tracks.length === 0) {
-                    alert('No tracks found in GPX file.');
-                    return;
+                    // Calculate total length
+                    let totalLength = 0;
+                    for (let i = 1; i < trackpoints.length; i++) {
+                        totalLength += haversineDistance(trackpoints[i-1], trackpoints[i]);
+                    }
+
+                    // Display
+                    document.getElementById('length').textContent = totalLength.toFixed(2);
+                    document.getElementById('pointCount').textContent = trackpoints.length.toLocaleString();
+                    document.getElementById('trackpoints').textContent = JSON.stringify(
+                        trackpoints.slice(0, 10), null, 2
+                    );
+                    resultsDiv.style.display = 'block';
+                } catch (err) {
+                    showError(err.message);
                 }
-
-                const track = gpx.tracks[0]; // Use first track
-                const trackpoints = track.points.map(p => ({
-                    lat: p.lat,
-                    lon: p.lon,
-                    ele: p.ele || null
-                }));
-
-                // Calculate total length
-                let totalLength = 0;
-                for (let i = 1; i < trackpoints.length; i++) {
-                    totalLength += haversineDistance(trackpoints[i-1], trackpoints[i]);
-                }
-
-                // Display results
-                document.getElementById('length').textContent = totalLength.toFixed(2);
-                document.getElementById('pointCount').textContent = trackpoints.length;
-                document.getElementById('trackpoints').textContent = JSON.stringify(
-                    trackpoints.slice(0, 10), null, 2
-                );
-                document.getElementById('results').style.display = 'block';
             };
+            reader.onerror = () => showError('Failed to read file');
             reader.readAsText(file);
+        }
+
+        function showError(msg) {
+            document.getElementById('error').textContent = msg;
+            document.getElementById('error').style.display = 'block';
         }
     </script>
 </body>
