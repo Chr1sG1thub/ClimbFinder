@@ -3,61 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Climb Finder</title>
-    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.3.1/turf.min.js"></script>
+    <title>GPX Route Analyzer</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         #fileInput { margin: 20px 0; }
         #results { margin-top: 20px; padding: 15px; background: #f0f8ff; border-radius: 5px; }
-        #climbs { margin-top: 20px; }
-        .climb { background: #d4edda; padding: 10px; margin: 5px 0; border-radius: 4px; }
-        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; white-space: pre-wrap; font-size: 0.9em; }
+        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; white-space: pre-wrap; }
         button { padding: 10px 20px; background: #007cba; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #005a87; }
         .error { color: red; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background: #f8f9fa; }
     </style>
 </head>
 <body>
-    <h1>Climb Finder</h1>
-    <p>Upload GPX → Parse trackpoints → Find climbs (Fiets rating ≥100m @10%).</p>
+    <h1>GPX Route Analyzer</h1>
+    <p>Select a GPX file to parse trackpoints (lat/lon/ele) and calculate route length. No external libraries needed.</p>
     <input type="file" id="fileInput" accept=".gpx" />
-    <button onclick="analyzeGPX()">Find Climbs</button>
+    <button onclick="analyzeGPX()">Analyze Route</button>
     
     <div id="results" style="display: none;">
-        <h2>Route Stats</h2>
+        <h2>Results</h2>
         <p><strong>Total Length:</strong> <span id="length"></span> km</p>
         <p><strong>Trackpoints:</strong> <span id="pointCount"></span></p>
-        <h3>First 10 Trackpoints:</h3>
+        <h3>Trackpoints Array (first 10):</h3>
         <pre id="trackpoints"></pre>
-        
-        <div id="climbs">
-            <h2>Detected Climbs</h2>
-            <p id="climbCount">No climbs found</p>
-            <table id="climbsTable">
-                <thead><tr><th>#</th><th>Start Pt</th><th>End Pt</th><th>Gain (m)</th><th>Dist (km)</th><th>Gradient (%)</th><th>Fiets Rating</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
     </div>
     <div id="error" class="error" style="display: none;"></div>
 
     <script>
-        // [Keep all your findClimbs, climbRating, simplifyProfile, uniq, haversineDistance, parseGPX functions exactly as-is]
+        // Haversine distance between two points (km)
+        function haversineDistance(p1, p2) {
+            const R = 6371;
+            const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+            const dLon = (p2.lon - p1.lon) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(p1.lat * Math.PI/180) * Math.cos(p2.lat * Math.PI/180) * Math.sin(dLon/2)**2;
+            return R * 2 * Math.asin(Math.sqrt(a));
+        } [web:29]
 
-        // Enhanced analyzeGPX with climb display
+        // Parse GPX text to trackpoints array using DOMParser
+        function parseGPX(gpxText) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(gpxText, 'text/xml');
+            const errors = xmlDoc.getElementsByTagName('parsererror');
+            if (errors.length > 0) throw new Error('Invalid GPX XML');
+
+            const trkpts = xmlDoc.getElementsByTagName('trkpt');
+            const trackpoints = [];
+            for (let i = 0; i < trkpts.length; i++) {
+                const pt = trkpts[i];
+                const lat = parseFloat(pt.getAttribute('lat'));
+                const lon = parseFloat(pt.getAttribute('lon'));
+                const eleNode = pt.getElementsByTagName('ele')[0];
+                const ele = eleNode ? parseFloat(eleNode.textContent) : null;
+                if (!isNaN(lat) && !isNaN(lon)) {
+                    trackpoints.push({ lat, lon, ele });
+                }
+            }
+            if (trackpoints.length === 0) throw new Error('No valid trackpoints found');
+            return trackpoints;
+        } [web:28][memory:10]
+
         function analyzeGPX() {
             const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
             const resultsDiv = document.getElementById('results');
             const errorDiv = document.getElementById('error');
-            const tbody = document.querySelector('#climbsTable tbody');
 
             resultsDiv.style.display = 'none';
             errorDiv.style.display = 'none';
-            tbody.innerHTML = '';
 
             if (!file) {
                 showError('Please select a GPX file.');
@@ -67,62 +79,21 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    let trackpoints = parseGPX(e.target.result);
-                    
-                    // Filter points with elevation
-                    trackpoints = trackpoints.filter(p => p.ele !== null && !isNaN(p.ele));
-                    if (trackpoints.length < 10) throw new Error('Insufficient points with elevation data');
+                    const trackpoints = parseGPX(e.target.result);
 
-                    // Calculate total length for courseDistance
+                    // Calculate total length
                     let totalLength = 0;
                     for (let i = 1; i < trackpoints.length; i++) {
                         totalLength += haversineDistance(trackpoints[i-1], trackpoints[i]);
                     }
 
-                    // Find climbs using defaults
-                    const climbs = findClimbs({ 
-                        points: trackpoints,
-                        courseDistance: totalLength
-                    });
-
-                    // Display results
+                    // Display
                     document.getElementById('length').textContent = totalLength.toFixed(2);
                     document.getElementById('pointCount').textContent = trackpoints.length.toLocaleString();
                     document.getElementById('trackpoints').textContent = JSON.stringify(
                         trackpoints.slice(0, 10), null, 2
                     );
-
-                    // Populate climbs table
-                    const climbCountEl = document.getElementById('climbCount');
-                    if (climbs.length === 0) {
-                        climbCountEl.textContent = 'No climbs found (≥100m @10%)';
-                    } else {
-                        climbCountEl.textContent = `${climbs.length} climb(s) found`;
-                        climbs.forEach((climb, idx) => {
-                            const startPt = trackpoints[climb[0]];
-                            const endPt = trackpoints[climb[1]];
-                            const gain = endPt.ele - startPt.ele;
-                            const segPoints = trackpoints.slice(climb[0], climb[1] + 1);
-                            const segDist = segPoints.reduce((sum, p, i) => 
-                                i > 0 ? sum + haversineDistance(segPoints[i-1], p) : sum, 0);
-                            const gradient = (gain / (segDist * 1000)) * 100;
-                            const rating = climbRating({ points: segPoints });
-
-                            const row = tbody.insertRow();
-                            row.innerHTML = `
-                                <td>${idx + 1}</td>
-                                <td>${climb[0]} (${startPt.ele.toFixed(0)}m)</td>
-                                <td>${climb[1]} (${endPt.ele.toFixed(0)}m)</td>
-                                <td>${gain.toFixed(0)}</td>
-                                <td>${segDist.toFixed(2)}</td>
-                                <td>${gradient.toFixed(1)}%</td>
-                                <td>${rating.toFixed(0)}</td>
-                            `;
-                        });
-                    }
-
                     resultsDiv.style.display = 'block';
-                    console.log('Climbs:', climbs);  // Debug
                 } catch (err) {
                     showError(err.message);
                 }
