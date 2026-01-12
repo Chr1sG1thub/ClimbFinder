@@ -22,12 +22,6 @@
     <button onclick="analyzeGPX()">Analyze Route</button>
     
     <div id="results" style="display: none;">
-        <h2>Results</h2>
-        <p><strong>Total Length:</strong> <span id="length"></span> km</p>
-        <p><strong>Trackpoints:</strong> <span id="pointCount"></span></p>
-<h3>Climbs Table</h3><div id="climbs"></div>
-        <h3>Trackpoints Array (first 10):</h3>
-        <pre id="trackpoints"></pre>
     </div>
     <div id="error" class="error" style="display: none;"></div>
 
@@ -251,10 +245,10 @@ const climbs = findClimbs({points: trackpoints, isLoop: false, threshold: 50});
 
 let climbsHtml = climbs.length ? 
   climbs.map(([start, end, details]) => 
-    `<tr><td>${start}-${end}</td><td>${details.gain.toFixed(0)}m</td><td>${details.distKm.toFixed(1)}km</td><td>${details.avgGrad.toFixed(1)}%</td><td>${details.rating.toFixed(0)}</td></tr>`
+    `<tr><td>${trackpoints[start].lat},${trackpoints[start].lon} - ${trackpoints[end].lat},${trackpoints[end].lon}</td><td>${details.gain.toFixed(0)}m</td><td>${details.distKm.toFixed(1)}km</td><td>${details.avgGrad.toFixed(1)}%</td><td>${details.rating.toFixed(0)}</td></tr>`
   ).join('') : '<tr><td colspan="5">No significant climbs</td></tr>';
 
-document.getElementById('results').innerHTML += `
+document.getElementById('results').innerHTML = `
   <h3>Detected Climbs (Fiets-style rating)</h3>
   <table style="width:100%; border-collapse:collapse; margin:10px 0;">
     <tr style="background:#ddd;"><th>Indices</th><th>Gain</th><th>Dist</th><th>Avg Grad</th><th>Rating</th></tr>
