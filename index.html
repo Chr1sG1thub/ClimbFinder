@@ -42,7 +42,7 @@ function findClimbs({
   shiftCircuit = true,     // Rotate loops to ele min?
   courseDistance = 0,      // Total route km (auto if 0)
   gradientPower = 2,       // Steepness exponent (2=Fiets-like)
-  threshold = 100,         // Min rating (m @10%)
+  threshold = 0.25,         // Min rating (m @10%)
   isLoop = false,          // Circular route?
   sign = 1,                // 1=up, -1=down, 0=both
   maxDepth = 10            // Recursion guard
@@ -243,7 +243,7 @@ function circularUniq(arr) {
                     const trackpoints = parseGPX(e.target.result);
 
 
-const climbs = findClimbs({points: trackpoints, isLoop: false, threshold: 100});
+const climbs = findClimbs({points: trackpoints, isLoop: false, threshold: 0.25});
 
 let climbsHtml = climbs.length ? 
   climbs.map(([start, end, details]) => 
