@@ -158,11 +158,11 @@ function climbRating({ points, gradientPower = 2 }) {
   const coords = points.map(p => [p.lon, p.lat]);
   const distKm = turf.length({ type: 'LineString', coordinates: coords }, { units: 'kilometers' });  // FIXED [web:52]
   const distM = distKm * 1000;
-  const pctGrad = (gain / distM) * 100;
+  const avgGrad = (gain / distM) * 100;
 
 const rating = Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(avgGrad / 10, 1 - gradientPower);
 
-  return { gain, distKm, avgGrad, rating };
+  return { rating, gain, distKm, avgGrad };
 }
 
 function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
