@@ -55,7 +55,7 @@ function findClimbs({
   if (!points?.length || points.length < 2 || maxDepth <= 0) return [];
 
   // Auto-compute courseDistance
-  const totalDist = courseDistance || turf.lineDistance(
+  const totalDist = courseDistance || turf.length(
     { type: 'LineString', coordinates: points.map(p => [p.lon, p.lat]) },
     { units: 'kilometers' }
   );
@@ -99,7 +99,7 @@ function findClimbs({
   if (bestRange && maxRating >= threshold) {
     // PREFIX recurse (before climb)
     if (bestRange.i > 0) {
-      const prefixLen = turf.lineDistance(
+      const prefixLen = turf.length(
         { type: 'LineString', coordinates: points.slice(indices[0], indices[bestRange.i] + 1).map(p => [p.lon, p.lat]) },
         { units: 'kilometers' }
       );
@@ -127,7 +127,7 @@ function findClimbs({
 
     // SUFFIX recurse (after climb)
     if (bestRange.j < indices.length - 1) {
-      const suffixLen = turf.lineDistance(
+      const suffixLen = turf.length(
         { type: 'LineString', coordinates: points.slice(indices[bestRange.j], indices.at(-1) + 1).map(p => [p.lon, p.lat]) },
         { units: 'kilometers' }
       );
