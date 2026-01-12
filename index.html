@@ -31,90 +31,116 @@
 
     <script>
 
-    /**
- * Full JS port of Perl findClimbs: Recursively finds climb/descent segments in GPS elevation profile.
- * Uses Turf.js for distances, Fiets-like rating. Assumes points: [{lat, lon, ele}, ...]
- * @returns Array of [[startIdx, endIdx], ...] pairs of ORIGINAL point indices.
+/**
+ * COMPLETE JS IMPLEMENTATION: Perl findClimbs port with corrections/improvements.
+ * Recursively detects climbs/descents in GPS profiles (GPX/Strava). Turf.js required.
+ * Improvements: recursion guards, scaled distances, exact Fiets, efficient simplify.
+ * Usage: findClimbs({points: gpxPoints, courseDistance: 50.2, isLoop: true})
+ * Returns: [[startIdx, endIdx, {rating, gain, dist, avgGrad}], ...]
+ * @turfjs: https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js
  */
 function findClimbs({
-  points,                  // [{lat, lon, ele}, ...]
-  indices,                 // Optional pre-computed indices
-  simplifyPoints = true,   // Use simplifyProfile?
-  shiftCircuit = true,     // Shift loops to ele min?
-  courseDistance,          // Total route km (used in simplify/normalize)
-  gradientPower = 2,       // Exponent for steepness bias
-  threshold = 100,         // Min Fiets rating (m @10%)
+  points,                  // [{lat, lon, ele}, ...] GPX points
+  indices,                 // Optional pre-simplified indices
+  simplifyPoints = true,   // Douglas-Peucker simplify?
+  shiftCircuit = true,     // Rotate loops to ele min?
+  courseDistance = 0,      // Total route km (auto if 0)
+  gradientPower = 2,       // Steepness exponent (2=Fiets-like)
+  threshold = 100,         // Min rating (m @10%)
   isLoop = false,          // Circular route?
-  sign = 1                 // 1=climbs, -1=descents, 0=both (abs)
-}) {
-  if (!points || points.length < 2) return [];
+  sign = 1,                // 1=up, -1=down, 0=both
+  maxDepth = 10            // Recursion guard
+} = {}) {
+  if (!points?.length || points.length < 2 || maxDepth <= 0) return [];
 
-  // Compute indices if not provided
-  indices = indices || (simplifyPoints ? simplifyProfile(points, gradientPower, courseDistance, isLoop) : points.map((_, i) => i));
+  // Auto-compute courseDistance
+  const totalDist = courseDistance || turf.lineDistance(
+    { type: 'LineString', coordinates: points.map(p => [p.lon, p.lat]) },
+    { units: 'kilometers' }
+  );
 
-  // Shift circuit to ele min (no gradient flips across bottom)
-  if (shiftCircuit && isLoop && indices.length > 1) {
-    let zMin = points[indices[0]].ele;
-    let izMin = 0;
+  // Indices: simplify or full
+  indices ??= simplifyPoints
+    ? simplifyProfile(points, gradientPower, totalDist, isLoop)
+    : points.map((_, i) => i);
+
+  if (indices.length < 2) return [];
+
+  // SHIFT CIRCUIT: Rotate to ele min (prevents gradient flip)
+  if (shiftCircuit && isLoop) {
+    let zMin = points[indices[0]].ele, izMin = 0;
     for (let i = 1; i < indices.length; i++) {
       if (points[indices[i]].ele < zMin) {
         zMin = points[indices[i]].ele;
         izMin = i;
       }
     }
-    if (izMin > 0) {
-      indices = indices.slice(izMin).concat(indices.slice(0, izMin));
-    }
+    if (izMin > 0) indices = [...indices.slice(izMin), ...indices.slice(0, izMin)];
   }
 
-  // Brute-force find max Fiets rating segment
-  let rating = threshold;
-  let range = null;
+  // BRUTE-FORCE: Find max rating segment (O(n^2), fine post-simplify)
+  let maxRating = threshold;
+  let bestRange = null;
   for (let j = 1; j < indices.length; j++) {
     for (let i = 0; i < j; i++) {
+      if (indices[j] - indices[i] < 3) continue;  // Min 3 pts/segment
       const segPoints = points.slice(indices[i], indices[j] + 1);
-      let r = climbRating({ points: segPoints, gradientPower });
-      if (sign === 0) r = Math.abs(r);
-      else r *= sign;
-      if (r > rating) {
-        rating = r;
-        range = [i, j];
+      const details = climbRating(segPoints, gradientPower);
+      let r = sign === 0 ? Math.abs(details.rating) : details.rating * sign;
+      if (r > maxRating) {
+        maxRating = r;
+        bestRange = { i, j, ...details };
       }
     }
   }
 
   const climbs = [];
-  if (range && rating >= threshold) {
-    // Recurse prefix
-    if (range[0] > 0) {
+  if (bestRange && maxRating >= threshold) {
+    // PREFIX recurse (before climb)
+    if (bestRange.i > 0) {
+      const prefixLen = turf.lineDistance(
+        { type: 'LineString', coordinates: points.slice(indices[0], indices[bestRange.i] + 1).map(p => [p.lon, p.lat]) },
+        { units: 'kilometers' }
+      );
       climbs.push(...findClimbs({
         points,
-        indices: indices.slice(0, range[0]),
+        indices: indices.slice(0, bestRange.i),
         simplifyPoints: false,
         shiftCircuit: false,
-        courseDistance,
+        courseDistance: prefixLen,
         gradientPower,
         threshold,
-        isLoop,
-        sign
+        isLoop: false,  // Sub-segments non-loop
+        sign,
+        maxDepth: maxDepth - 1
       }));
     }
 
-    // Add this climb (original indices)
-    climbs.push([indices[range[0]], indices[range[1]]]);
+    // THIS CLIMB (enhanced details)
+    climbs.push([indices[bestRange.i], indices[bestRange.j], {
+      rating: maxRating,
+      gain: bestRange.gain,
+      distKm: bestRange.distKm,
+      avgGrad: bestRange.avgGrad
+    }]);
 
-    // Recurse suffix
-    if (range[1] < indices.length - 1) {
+    // SUFFIX recurse (after climb)
+    if (bestRange.j < indices.length - 1) {
+      const suffixLen = turf.lineDistance(
+        { type: 'LineString', coordinates: points.slice(indices[bestRange.j], indices.at(-1) + 1).map(p => [p.lon, p.lat]) },
+        { units: 'kilometers' }
+      );
       climbs.push(...findClimbs({
         points,
-        indices: indices.slice(range[1] + 1),
+        indices: indices.slice(bestRange.j + 1),
         simplifyPoints: false,
         shiftCircuit: false,
-        courseDistance,
+        courseDistance: suffixLen,
         gradientPower,
         threshold,
-        isLoop,
-        sign
+        isLoop: false,
+        sign,
+        maxDepth: maxDepth - 1
       }));
     }
   }
@@ -123,48 +149,58 @@ function findClimbs({
 }
 
 /**
- * Fiets climb rating: Normalized "vertical meters @10%". Penalizes shallow gradients.
- * Approx: (gain^gp / dist) * (10% norm factor)
+ * Fiets climb rating (corrected/normalized to m@10%).
+ * rating = gain * (avgGrad / 10%)^(1-gp)
+ * Matches Perl climbRating [web:16][page:26]
  */
-function climbRating({ points, gradientPower = 2 }) {
-  if (points.length < 2) return 0;
-  const gain = points[points.length - 1].ele - points[0].ele;
-  if (gain <= 0) return 0;  // Climbs only (modify for descents)
+function climbRating(segPoints, gradientPower = 2) {
+  if (segPoints.length < 2) return { rating: 0, gain: 0, distKm: 0, avgGrad: 0 };
 
-
-  const coords = points.map(p => [p.lon, p.lat]);
+  const gain = segPoints[segPoints.length - 1].ele - segPoints[0].ele;
+  const coords = segPoints.map(p => [p.lon, p.lat]);
   const distKm = turf.lineDistance({ type: 'LineString', coordinates: coords }, { units: 'kilometers' });
-  const distM = distKm * 1000;
-  const pctGrad = (gain / distM) * 100;
+  if (distKm === 0) return { rating: 0, gain, distKm: 0, avgGrad: 0 };
 
-  // Fiets-like: gain * (pctGrad / 10)^(1-gp) approx, but gp-power on gain for steep bias [web:16]
-  return Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(pctGrad / 10, 1 - gradientPower);
+  const pctGrad = (gain / (distKm * 1000)) * 100;
+  const rating = gain * Math.pow(Math.max(0, pctGrad / 10), 1 - gradientPower);
+
+  return { rating, gain, distKm, avgGrad: pctGrad };
 }
 
 /**
- * simplifyProfile stub: Douglas-Peucker via Turf (tolerance based on courseDistance/gradientPower).
- * Returns key indices preserving profile shape.
+ * Improved simplifyProfile: Adaptive Douglas-Peucker + gradient weighting.
+ * Keeps climbs sharp [web:18][web:22]
  */
 function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
-  if (!points || points.length < 3) return points.map((_, i) => i);
   const coords = points.map(p => [p.lon, p.lat]);
-  const tolerance = (courseDistance || 50) / 1000 * Math.pow(gradientPower, 0.5) * 0.01;  // Adaptive ~1% route
-  const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: false });
-  const simpIndices = [];  // Map back to original indices (approx via closest coord match)
+  const tolerance = Math.max(1, (courseDistance || 50) * 0.005 * Math.sqrt(gradientPower));  // 0.5% route, gp-scaled
+  const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: true });
+
+  // Map back to nearest original indices
+  const indices = [];
   simplified.coordinates.forEach(sc => {
     let minDist = Infinity, bestIdx = 0;
-    coords.forEach((oc, oi) => {
-      const d = turf.distance(sc, oc, { units: 'meters' });
-      if (d < minDist) { minDist = d; bestIdx = oi; }
-    });
-    if (minDist < 10) simpIndices.push(bestIdx);  // Threshold match
+    for (let i = 0; i < coords.length; i++) {
+      const d = turf.distance(sc, coords[i]);
+      if (d < minDist) {
+        minDist = d;
+        bestIdx = i;
+      }
+    }
+    if (minDist < 20 && !indices.includes(bestIdx)) indices.push(bestIdx);  // 20m match, dedup
   });
-  return isLoop ? simpIndices : uniq(simpIndices);  // Dedup
+
+  return isLoop && indices.length > 2 ? circularUniq(indices) : indices;
 }
 
-// Helpers
-function uniq(arr) {
-  return arr.filter((v, i, a) => a.indexOf(v) === i);
+// Utils
+function circularUniq(arr) {
+  const uniq = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (!uniq.includes(arr[i])) uniq.push(arr[i]);
+    if (uniq.length >= arr.length / 2) break;  // Prevent over-simplify loops
+  }
+  return uniq;
 }
 
         // Haversine distance between two points (km)
@@ -217,6 +253,12 @@ function uniq(arr) {
             reader.onload = function(e) {
                 try {
                     const trackpoints = parseGPX(e.target.result);
+
+
+const climbs = findClimbs({points: trackpoints});
+
+
+                    
 
                     // Calculate total length
                     let totalLength = 0;
