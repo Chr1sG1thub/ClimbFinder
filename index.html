@@ -241,7 +241,7 @@ function circularUniq(arr) {
                     const trackpoints = parseGPX(e.target.result);
 
 
-const climbs = findClimbs({points: trackpoints, isLoop: false, threshold: 50});
+const climbs = findClimbs({points: trackpoints, isLoop: false, threshold: 100});
 
 let climbsHtml = climbs.length ? 
   climbs.map(([start, end, details]) => 
