@@ -153,7 +153,10 @@ function findClimbs({
 function climbRating({ points, gradientPower = 2 }) {
   if (points.length < 2) return 0;
   const gain = points[points.length - 1].ele - points[0].ele;
-  if (gain <= 0) return 0;
+  if (gain <= 0) {
+      const rating = 0;
+      return { rating };
+  }
 
   const coords = points.map(p => [p.lon, p.lat]);
   const distKm = turf.length({ type: 'LineString', coordinates: coords }, { units: 'kilometers' });  // FIXED [web:52]
