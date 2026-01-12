@@ -157,7 +157,9 @@ function climbRating({ points, gradientPower = 2 }) {
   const distM = distKm * 1000;
   const avgGrad = (gain / distM) * 100;
 
-const rating = Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(avgGrad / 10, 1 - gradientPower);
+//const rating = Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(avgGrad / 10, 1 - gradientPower);
+
+const rating = Math.pow(Math.max(0, gain), 2) / (distM * 10);
 
   return { rating, gain, distKm, avgGrad };
 }
