@@ -160,7 +160,9 @@ function climbRating({ points, gradientPower = 2 }) {
   const distM = distKm * 1000;
   const pctGrad = (gain / distM) * 100;
 
-  return Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(pctGrad / 10, 1 - gradientPower);
+const rating = Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(avgGrad / 10, 1 - gradientPower);
+
+  return { gain, distKm, avgGrad, rating };
 }
 
 function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
