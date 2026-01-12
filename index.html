@@ -149,52 +149,37 @@ function findClimbs({
   return climbs;
 }
 
-/**
- * Fiets climb rating (corrected/normalized to m@10%).
- * rating = gain * (avgGrad / 10%)^(1-gp)
- * Matches Perl climbRating [web:16][page:26]
- */
-function climbRating(segPoints, gradientPower = 2) {
-  if (segPoints.length < 2) return { rating: 0, gain: 0, distKm: 0, avgGrad: 0 };
+function climbRating({ points, gradientPower = 2 }) {
+  if (points.length < 2) return 0;
+  const gain = points[points.length - 1].ele - points[0].ele;
+  if (gain <= 0) return 0;
 
-  const gain = segPoints[segPoints.length - 1].ele - segPoints[0].ele;
-  const coords = segPoints.map(p => [p.lon, p.lat]);
-  const distKm = turf.lineDistance({ type: 'LineString', coordinates: coords }, { units: 'kilometers' });
-  if (distKm === 0) return { rating: 0, gain, distKm: 0, avgGrad: 0 };
-
-  const pctGrad = (gain / (distKm * 1000)) * 100;
-  const rating = gain * Math.pow(Math.max(0, pctGrad / 10), 1 - gradientPower);
-
-  return { rating, gain, distKm, avgGrad: pctGrad };
-}
-
-/**
- * Improved simplifyProfile: Adaptive Douglas-Peucker + gradient weighting.
- * Keeps climbs sharp [web:18][web:22]
- */
-function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
   const coords = points.map(p => [p.lon, p.lat]);
-  const tolerance = Math.max(1, (courseDistance || 50) * 0.005 * Math.sqrt(gradientPower));  // 0.5% route, gp-scaled
-  const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: true });
+  const distKm = turf.length({ type: 'LineString', coordinates: coords }, { units: 'kilometers' });  // FIXED [web:52]
+  const distM = distKm * 1000;
+  const pctGrad = (gain / distM) * 100;
 
-  // Map back to nearest original indices
-  const indices = [];
-  simplified.coordinates.forEach(sc => {
-    let minDist = Infinity, bestIdx = 0;
-    for (let i = 0; i < coords.length; i++) {
-      const d = turf.distance(sc, coords[i]);
-      if (d < minDist) {
-        minDist = d;
-        bestIdx = i;
-      }
-    }
-    if (minDist < 20 && !indices.includes(bestIdx)) indices.push(bestIdx);  // 20m match, dedup
-  });
-
-  return isLoop && indices.length > 2 ? circularUniq(indices) : indices;
+  return Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(pctGrad / 10, 1 - gradientPower);
 }
 
-// Utils
+function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
+  if (!points || points.length < 3) return points.map((_, i) => i);
+  const coords = points.map(p => [p.lon, p.lat]);
+  const tolerance = (courseDistance || 50) / 1000 * Math.pow(gradientPower, 0.5) * 0.01;
+  const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: false });
+  
+  const simpIndices = [];
+  simplified.geometry.coordinates.forEach(sc => {  // FIXED: geometry access [web:51]
+    let minDist = Infinity, bestIdx = 0;
+    coords.forEach((oc, oi) => {
+      const d = turf.distance(sc, oc, { units: 'meters' });
+      if (d < minDist) { minDist = d; bestIdx = oi; }
+    });
+    if (minDist < 10) simpIndices.push(bestIdx);
+  });
+  return isLoop ? simpIndices : uniq(simpIndices);
+}
+        // Utils
 function circularUniq(arr) {
   const uniq = [];
   for (let i = 0; i < arr.length; i++) {
