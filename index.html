@@ -30,6 +30,143 @@
     <div id="error" class="error" style="display: none;"></div>
 
     <script>
+
+    /**
+ * Full JS port of Perl findClimbs: Recursively finds climb/descent segments in GPS elevation profile.
+ * Uses Turf.js for distances, Fiets-like rating. Assumes points: [{lat, lon, ele}, ...]
+ * @returns Array of [[startIdx, endIdx], ...] pairs of ORIGINAL point indices.
+ */
+function findClimbs({
+  points,                  // [{lat, lon, ele}, ...]
+  indices,                 // Optional pre-computed indices
+  simplifyPoints = true,   // Use simplifyProfile?
+  shiftCircuit = true,     // Shift loops to ele min?
+  courseDistance,          // Total route km (used in simplify/normalize)
+  gradientPower = 2,       // Exponent for steepness bias
+  threshold = 100,         // Min Fiets rating (m @10%)
+  isLoop = false,          // Circular route?
+  sign = 1                 // 1=climbs, -1=descents, 0=both (abs)
+}) {
+  if (!points || points.length < 2) return [];
+
+  // Compute indices if not provided
+  indices = indices || (simplifyPoints ? simplifyProfile(points, gradientPower, courseDistance, isLoop) : points.map((_, i) => i));
+
+  // Shift circuit to ele min (no gradient flips across bottom)
+  if (shiftCircuit && isLoop && indices.length > 1) {
+    let zMin = points[indices[0]].ele;
+    let izMin = 0;
+    for (let i = 1; i < indices.length; i++) {
+      if (points[indices[i]].ele < zMin) {
+        zMin = points[indices[i]].ele;
+        izMin = i;
+      }
+    }
+    if (izMin > 0) {
+      indices = indices.slice(izMin).concat(indices.slice(0, izMin));
+    }
+  }
+
+  // Brute-force find max Fiets rating segment
+  let rating = threshold;
+  let range = null;
+  for (let j = 1; j < indices.length; j++) {
+    for (let i = 0; i < j; i++) {
+      const segPoints = points.slice(indices[i], indices[j] + 1);
+      let r = climbRating({ points: segPoints, gradientPower });
+      if (sign === 0) r = Math.abs(r);
+      else r *= sign;
+      if (r > rating) {
+        rating = r;
+        range = [i, j];
+      }
+    }
+  }
+
+  const climbs = [];
+  if (range && rating >= threshold) {
+    // Recurse prefix
+    if (range[0] > 0) {
+      climbs.push(...findClimbs({
+        points,
+        indices: indices.slice(0, range[0]),
+        simplifyPoints: false,
+        shiftCircuit: false,
+        courseDistance,
+        gradientPower,
+        threshold,
+        isLoop,
+        sign
+      }));
+    }
+
+    // Add this climb (original indices)
+    climbs.push([indices[range[0]], indices[range[1]]]);
+
+    // Recurse suffix
+    if (range[1] < indices.length - 1) {
+      climbs.push(...findClimbs({
+        points,
+        indices: indices.slice(range[1] + 1),
+        simplifyPoints: false,
+        shiftCircuit: false,
+        courseDistance,
+        gradientPower,
+        threshold,
+        isLoop,
+        sign
+      }));
+    }
+  }
+
+  return climbs;
+}
+
+/**
+ * Fiets climb rating: Normalized "vertical meters @10%". Penalizes shallow gradients.
+ * Approx: (gain^gp / dist) * (10% norm factor)
+ */
+function climbRating({ points, gradientPower = 2 }) {
+  if (points.length < 2) return 0;
+  const gain = points[points.length - 1].ele - points[0].ele;
+  if (gain <= 0) return 0;  // Climbs only (modify for descents)
+
+
+  const coords = points.map(p => [p.lon, p.lat]);
+  const distKm = turf.lineDistance({ type: 'LineString', coordinates: coords }, { units: 'kilometers' });
+  const distM = distKm * 1000;
+  const pctGrad = (gain / distM) * 100;
+
+  // Fiets-like: gain * (pctGrad / 10)^(1-gp) approx, but gp-power on gain for steep bias [web:16]
+  return Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(pctGrad / 10, 1 - gradientPower);
+}
+
+/**
+ * simplifyProfile stub: Douglas-Peucker via Turf (tolerance based on courseDistance/gradientPower).
+ * Returns key indices preserving profile shape.
+ */
+function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
+  if (!points || points.length < 3) return points.map((_, i) => i);
+  const coords = points.map(p => [p.lon, p.lat]);
+  const tolerance = (courseDistance || 50) / 1000 * Math.pow(gradientPower, 0.5) * 0.01;  // Adaptive ~1% route
+  const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: false });
+  const simpIndices = [];  // Map back to original indices (approx via closest coord match)
+  simplified.coordinates.forEach(sc => {
+    let minDist = Infinity, bestIdx = 0;
+    coords.forEach((oc, oi) => {
+      const d = turf.distance(sc, oc, { units: 'meters' });
+      if (d < minDist) { minDist = d; bestIdx = oi; }
+    });
+    if (minDist < 10) simpIndices.push(bestIdx);  // Threshold match
+  });
+  return isLoop ? simpIndices : uniq(simpIndices);  // Dedup
+}
+
+// Helpers
+function uniq(arr) {
+  return arr.filter((v, i, a) => a.indexOf(v) === i);
+}
+
         // Haversine distance between two points (km)
         function haversineDistance(p1, p2) {
             const R = 6371;
