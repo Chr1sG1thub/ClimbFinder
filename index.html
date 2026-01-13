@@ -167,7 +167,8 @@ const rating = Math.pow(Math.max(0, gain), 2) / (distM * 10);
 function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
   if (!points || points.length < 3) return points.map((_, i) => i);
   const coords = points.map(p => [p.lon, p.lat]);
-  const tolerance = (courseDistance || 50) / 1000 * Math.pow(gradientPower, 0.5) * 0.01;
+  //const tolerance = (courseDistance || 50) / 1000 * Math.pow(gradientPower, 0.5) * 0.01;
+  const tolerance = 0.001;
   const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: true });
   
   const simpIndices = [];
