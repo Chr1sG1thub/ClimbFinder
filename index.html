@@ -180,7 +180,7 @@ function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
     if (minDist < 10) simpIndices.push(bestIdx);
   });
 //  return isLoop ? simpIndices : circularUniq(simpIndices);
-  return simpIndices;
+  return circularUniq(simpIndices);
 }
         // Utils
 function circularUniq(arr) {
