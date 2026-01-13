@@ -38,7 +38,7 @@
 function findClimbs({
   points,                  // [{lat, lon, ele}, ...] GPX points
   indices,                 // Optional pre-simplified indices
-  simplifyPoints = true,   // Douglas-Peucker simplify?
+  simplifyPoints = false,   // Douglas-Peucker simplify?
   shiftCircuit = true,     // Rotate loops to ele min?
   courseDistance = 0,      // Total route km (auto if 0)
   gradientPower = 2,       // Steepness exponent (2=Fiets-like)
@@ -101,7 +101,7 @@ function findClimbs({
       climbs.push(...findClimbs({
         points,
         indices: indices.slice(0, bestRange.i),
-        simplifyPoints: true,
+        simplifyPoints: false,
         shiftCircuit: false,
         courseDistance: prefixLen,
         gradientPower,
@@ -129,7 +129,7 @@ function findClimbs({
       climbs.push(...findClimbs({
         points,
         indices: indices.slice(bestRange.j + 1),
-        simplifyPoints: true,
+        simplifyPoints: false,
         shiftCircuit: false,
         courseDistance: suffixLen,
         gradientPower,
