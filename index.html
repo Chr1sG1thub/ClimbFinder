@@ -80,7 +80,11 @@ function findClimbs({
   for (let j = 1; j < indices.length; j++) {
     for (let i = 0; i < j; i++) {
       if (Math.abs(indices[j] - indices[i]) < 3) continue;  // Min 3 pts/segment
+        if ((indices[j] + 1) >= indices[i]) {
       const segPoints = points.slice(indices[i], indices[j] + 1);
+        } else {
+      const segPoints = points.slice(indices[j] + 1, indices[i]);
+       }
       const details = climbRating({points:segPoints}, gradientPower);
       let r = sign === 0 ? Math.abs(details.rating) : details.rating * sign;
       if (r > maxRating) {
