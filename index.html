@@ -101,7 +101,7 @@ function findClimbs({
       climbs.push(...findClimbs({
         points,
         indices: indices.slice(0, bestRange.i),
-        simplifyPoints: true,
+        simplifyPoints: false,
         shiftCircuit: false,
         courseDistance: prefixLen,
         gradientPower,
@@ -129,7 +129,7 @@ function findClimbs({
       climbs.push(...findClimbs({
         points,
         indices: indices.slice(bestRange.j + 1),
-        simplifyPoints: true,
+        simplifyPoints: false,
         shiftCircuit: false,
         courseDistance: suffixLen,
         gradientPower,
