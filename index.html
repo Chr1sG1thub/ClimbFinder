@@ -187,7 +187,7 @@ function circularUniq(arr) {
   const uniq = [];
   for (let i = 0; i < arr.length; i++) {
     if (!uniq.includes(arr[i])) uniq.push(arr[i]);
-    if (uniq.length >= arr.length / 2) break;  // Prevent over-simplify loops
+   // if (uniq.length >= arr.length / 2) break;  // Prevent over-simplify loops
   }
   return uniq;
 }
