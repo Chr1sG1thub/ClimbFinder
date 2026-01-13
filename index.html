@@ -181,7 +181,7 @@ function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
     let minDist = Infinity, bestIdx = 0, maxoi = 0; //cjh
     coords.forEach((oc, oi) => {
       const d = turf.distance(sc, oc, { units: 'meters' });
-      if (d < minDist and oi > maxoi) { minDist = d; bestIdx = oi; maxoi = oi;} //cjh
+      if (d < minDist && oi > maxoi) { minDist = d; bestIdx = oi; maxoi = oi;} //cjh
     });
     if (minDist < 10) simpIndices.push(bestIdx);
   });
