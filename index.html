@@ -168,7 +168,7 @@ function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
   if (!points || points.length < 3) return points.map((_, i) => i);
   const coords = points.map(p => [p.lon, p.lat]);
   const tolerance = (courseDistance || 50) / 1000 * Math.pow(gradientPower, 0.5) * 0.01;
-  const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: false });
+  const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: true });
   
   const simpIndices = [];
   simplified.coordinates.forEach(sc => {  // FIXED: geometry access [web:51]
