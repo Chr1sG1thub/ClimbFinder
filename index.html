@@ -63,21 +63,11 @@
 
   <script>
 
-    /**
-     * COMPLETE JS IMPLEMENTATION: Perl findClimbs port with corrections/improvements.
-     * Recursively detects climbs/descents in GPS profiles (GPX/Strava). Turf.js required.
-     * Improvements: recursion guards, scaled distances, exact Fiets, efficient simplify.
-     * Usage: findClimbs({points: gpxPoints, courseDistance: 50.2, isLoop: true})
-     * Returns: [[startIdx, endIdx, {rating, gain, dist, avgGrad}], ...]
-     * @turfjs: https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js
-     */
-    function findClimbs({
+     function findClimbs({
       points,                  // [{lat, lon, ele}, ...] GPX points
       indices,                 // Optional pre-simplified indices
       simplifyPoints = true,   // Douglas-Peucker simplify?
-      shiftCircuit = true,     // Rotate loops to ele min?
       courseDistance = 0,      // Total route km (auto if 0)
-      gradientPower = 2,       // Steepness exponent (2=Fiets-like)
       threshold = 0.2,         // Min rating (m @10%)
       isLoop = false,          // Circular route?
       sign = 1,                // 1=up, -1=down, 0=both
@@ -93,7 +83,7 @@
 
       // Indices: simplify or full
       indices ??= simplifyPoints
-        ? simplifyProfile(points, gradientPower, totalDist, isLoop)
+        ? simplifyProfile(points, totalDist, isLoop)
         : points.map((_, i) => i);
 
       if (indices.length < 2) return [];
@@ -111,7 +101,7 @@
           //        } else {
           //      segPoints = points.slice(indices[j] + 1, indices[i]);
           //       }
-          const details = climbRating({ points: segPoints }, gradientPower);
+          const details = climbRating({ points: segPoints });
           let r = sign === 0 ? Math.abs(details.rating) : details.rating * sign;
           if (r > maxRating) {
             maxRating = r;
@@ -132,9 +122,7 @@
             points,
             indices: indices.slice(0, bestRange.i),
             simplifyPoints: false,
-            shiftCircuit: false,
             courseDistance: prefixLen,
-            gradientPower,
             threshold,
             isLoop: false,  // Sub-segments non-loop
             sign,
@@ -160,9 +148,7 @@
             points,
             indices: indices.slice(bestRange.j + 1),
             simplifyPoints: false,
-            shiftCircuit: false,
             courseDistance: suffixLen,
-            gradientPower,
             threshold,
             isLoop: false,
             sign,
@@ -174,7 +160,7 @@
       return climbs;
     }
 
-    function climbRating({ points, gradientPower = 2 }) {
+    function climbRating({ points }) {
       if (points.length < 2) return 0;
       const gain = points[points.length - 1].ele - points[0].ele;
       if (gain <= 0) {
@@ -195,10 +181,10 @@
       return { rating, gain, distKm, avgGrad };
     }
 
-    function simplifyProfile(points, gradientPower, courseDistance, isLoop) {
+    function simplifyProfile(points, courseDistance, isLoop) {
       if (!points || points.length < 3) return points.map((_, i) => i);
       const coords = points.map(p => [p.lon, p.lat]);
-      //const tolerance = (courseDistance || 50) / 1000 * Math.pow(gradientPower, 0.5) * 0.01;
+      //const tolerance = (courseDistance || 50) / 1000 * Math.pow(2, 0.5) * 0.01;
       const tolerance = 0.001;
       const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: true });
 
@@ -267,7 +253,7 @@
           const trackpoints = parseGPX(e.target.result);
 
 
-          const climbs = findClimbs({ points: trackpoints, isLoop: false, threshold: 0.2 });
+          const climbs = findClimbs({ points: trackpoints});
 
           let climbsHtml = climbs.length ?
             climbs.map(([start, end, details]) =>
