@@ -62,17 +62,6 @@ function findClimbs({
 
   if (indices.length < 2) return [];
 
-  // SHIFT CIRCUIT: Rotate to ele min (prevents gradient flip)
-  if (shiftCircuit && isLoop) {
-    let zMin = points[indices[0]].ele, izMin = 0;
-    for (let i = 1; i < indices.length; i++) {
-      if (points[indices[i]].ele < zMin) {
-        zMin = points[indices[i]].ele;
-        izMin = i;
-      }
-    }
-    if (izMin > 0) indices = [...indices.slice(izMin), ...indices.slice(0, izMin)];
-  }
 
   // BRUTE-FORCE: Find max rating segment (O(n^2), fine post-simplify)
   let maxRating = threshold;
@@ -198,16 +187,6 @@ function circularUniq(arr) {
   }
   return uniq;
 }
-
-        // Haversine distance between two points (km)
-        function haversineDistance(p1, p2) {
-            const R = 6371;
-            const dLat = (p2.lat - p1.lat) * Math.PI / 180;
-            const dLon = (p2.lon - p1.lon) * Math.PI / 180;
-            const a = Math.sin(dLat/2)**2 + Math.cos(p1.lat * Math.PI/180) * Math.cos(p2.lat * Math.PI/180) * Math.sin(dLon/2)**2;
-            return R * 2 * Math.asin(Math.sqrt(a));
-        }
-
         // Parse GPX text to trackpoints array using DOMParser
         function parseGPX(gpxText) {
             const parser = new DOMParser();
@@ -255,7 +234,7 @@ const climbs = findClimbs({points: trackpoints, isLoop: false, threshold: 0.2});
 
 let climbsHtml = climbs.length ? 
   climbs.map(([start, end, details]) => 
-    `<tr><td>${trackpoints[start].lat},${trackpoints[start].lon} - ${trackpoints[end].lat},${trackpoints[end].lon}</td><td>${details.gain.toFixed(0)}m</td><td>${details.distKm.toFixed(1)}km</td><td>${details.avgGrad.toFixed(1)}%</td><td>${details.rating.toFixed(0)}</td></tr>`
+    `<tr><td>${trackpoints[start].lat},${trackpoints[start].lon} - ${trackpoints[end].lat},${trackpoints[end].lon}</td><td>${details.gain.toFixed(0)}m</td><td>${details.distKm.toFixed(1)}km</td><td>${details.avgGrad.toFixed(1)}%</td><td>${details.rating.toFixed(2)}</td></tr>`
   ).join('') : '<tr><td colspan="5">No significant climbs</td></tr>';
 
 document.getElementById('results').innerHTML = `
