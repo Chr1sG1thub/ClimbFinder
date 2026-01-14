@@ -153,8 +153,8 @@ function climbRating({ points, gradientPower = 2 }) {
 
 //const rating = Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(avgGrad / 10, 1 - gradientPower);
 
-const rating = Math.pow(Math.max(0, gain), 2) / (distM * 10);
-//const rating = gain*(1 + Math.pow(10*gain/distM, 2)); //cbb
+//const rating = Math.pow(Math.max(0, gain), 2) / (distM * 10); //fiets
+const rating = Math.max(0, gain)*(1 + Math.pow(10*Math.max(0, gain)/distM, 2)); //cbb
 
   return { rating, gain, distKm, avgGrad };
 }
