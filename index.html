@@ -42,8 +42,7 @@ function findClimbs({
   shiftCircuit = true,     // Rotate loops to ele min?
   courseDistance = 0,      // Total route km (auto if 0)
   gradientPower = 2,       // Steepness exponent (2=Fiets-like)
-//  threshold = 0.2,         // Min rating (m @10%)
-  threshold = 120,         // Min rating (m @10%)
+  threshold = 0.2,         // Min rating (m @10%)
   isLoop = false,          // Circular route?
   sign = 1,                // 1=up, -1=down, 0=both
   maxDepth = 10            // Recursion guard
@@ -154,8 +153,8 @@ function climbRating({ points, gradientPower = 2 }) {
 
 //const rating = Math.pow(Math.max(0, gain), gradientPower) / Math.pow(10, gradientPower - 1) * Math.pow(avgGrad / 10, 1 - gradientPower);
 
-//fiets const rating = Math.pow(Math.max(0, gain), 2) / (distM * 10);
-const rating = gain*(1 + Math.pow(10*gain/distM, 2)); //cbb
+const rating = Math.pow(Math.max(0, gain), 2) / (distM * 10);
+//const rating = gain*(1 + Math.pow(10*gain/distM, 2)); //cbb
 
   return { rating, gain, distKm, avgGrad };
 }
@@ -232,7 +231,7 @@ function circularUniq(arr) {
                     const trackpoints = parseGPX(e.target.result);
 
 
-const climbs = findClimbs({points: trackpoints, isLoop: false, threshold: 120 /*0.2*/});
+const climbs = findClimbs({points: trackpoints, isLoop: false, threshold: 0.2 });
 
 let climbsHtml = climbs.length ? 
   climbs.map(([start, end, details]) => 
