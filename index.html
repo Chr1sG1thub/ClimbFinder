@@ -186,13 +186,15 @@
       const simplified = turf.simplify({ type: 'LineString', coordinates: coords }, { tolerance, highQuality: true });
 
       const simpIndices = [];
+      let maxoi = 0;
       simplified.coordinates.forEach(sc => {  // FIXED: geometry access [web:51]
         let minDist = Infinity, bestIdx = 0;
         coords.forEach((oc, oi) => {
+          if (oi <= maxoi || oi > (maxoi + 100)) return;
           const d = turf.distance(sc, oc, { units: 'meters' });
-          if (d < minDist) { minDist = d; bestIdx = oi; }
+          if (d < minDist) { minDist = d; bestIdx = oi; maxoi = oi;}
         });
-        if (minDist < 10) simpIndices.push(bestIdx);
+        /*if (minDist < 10)*/ simpIndices.push(bestIdx);
       });
       // return circularUniq(simpIndices);
       return simpIndices;
